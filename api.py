@@ -1,13 +1,20 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import ollama
 import time
+import json
 
-app = FastAPI(title="Gollama API", description="Unified Local SLM Engine")
+app = FastAPI(title="Gollama Core API Engine", description="Dynamic Multi Model SLM Optimization Engine")
 
-# --- Data Models ---
+# --- Dynamic Request Schema Contracts ---
 class QueryRequest(BaseModel):
     prompt: str
+    model: str = "gemma3:1b" # Accepts incoming model parameters dynamically
+
+class ExtractionRequest(BaseModel):
+    prompt: str
+    model: str = "gemma3:1b"
+    temperature: float = 0.0
 
 class DeveloperProfile(BaseModel):
     name: str
@@ -16,37 +23,68 @@ class DeveloperProfile(BaseModel):
     skills: list[str]
 
 
-# --- Endpoint 1: Structured JSON Extraction (From Step 3) ---
+# --- Dynamic Structured Extraction Endpoint ---
 @app.post("/extract-profile")
-async def extract_profile(request: QueryRequest):
+async def extract_profile(request: ExtractionRequest):
     start_time = time.time()
-    
-    response = ollama.chat(
-        model='gemma3:1b',
-        messages=[
-            {
-                'role': 'user', 
-                'content': f"Extract developer profile details from this text.'primary_language' means their main PROGRAMMING language, not spoken language. Text: {request.prompt}"
-            }
-        ],
-        format=DeveloperProfile.model_json_schema(), # Constrains output to Pydantic shape
-        options={'temperature': 0} # Eliminates stochastic randomness
-    )
-    
+    retry_triggered = False
+    error_log = None
+    schema_layout = DeveloperProfile.model_json_schema()
+
+    try:
+        response = ollama.chat(
+            model=request.model, # Dynamically maps chosen model
+            messages=[
+                {
+                    'role': 'user',
+                    'content': (
+                        f"Extract developer profile details from this text. 'primary_language' means their main PROGRAMMING language, not spoken language."
+                        f" Text: {request.prompt}"
+                    )
+                }
+            ],
+            format=schema_layout,
+            options={'temperature': request.temperature}
+        )
+        raw_content = response['message']['content']
+        validated_data = DeveloperProfile.model_validate_json(raw_content)
+        
+    except (ValidationError, ValueError, json.JSONDecodeError) as e:
+        retry_triggered = True
+        error_log = str(e)
+        
+        repair_prompt = (
+            f"Your previous output failed strict validation rules.\n"
+            f"Validation Failure Details: {error_log}\n"
+            f"Original Input Source: {request.prompt}\n"
+            f"Task: Correct the data types. Output clean JSON matching this schema: {schema_layout}"
+        )
+        
+        # Self-heals using the exact same requested model under zero temperature
+        repair_response = ollama.chat(
+            model=request.model,
+            messages=[{'role': 'user', 'content': repair_prompt}],
+            format=schema_layout,
+            options={'temperature': 0.0}
+        )
+        raw_content = repair_response['message']['content']
+        validated_data = DeveloperProfile.model_validate_json(raw_content)
+
     elapsed_time = time.time() - start_time
-    raw_content = response['message']['content']
-    
-    # Securely validate the string JSON into a structured Python dictionary
-    validated_data = DeveloperProfile.model_validate_json(raw_content)
     
     return {
-        "model": "gemma3:1b",
+        "model": request.model,
         "structured_data": validated_data,
-        "total_latency_seconds": round(elapsed_time, 2)
+        "total_latency_seconds": round(elapsed_time, 2),
+        "defensive_telemetry": {
+            "requested_temperature": request.temperature,
+            "self_healing_retry_triggered": retry_triggered,
+            "original_error_exception": error_log
+        }
     }
 
 
-# --- Endpoint 2: Telemetry Benchmarking (From Step 4) ---
+# --- Dynamic Benchmarking Endpoint ---
 @app.post("/benchmark")
 async def benchmark_endpoint(request: QueryRequest):
     start_time = time.time()
@@ -55,7 +93,7 @@ async def benchmark_endpoint(request: QueryRequest):
     tokens_generated = 0
     
     stream = ollama.chat(
-        model='gemma3:1b',
+        model=request.model, # Dynamically maps chosen model
         messages=[{'role': 'user', 'content': request.prompt}],
         stream=True
     )
@@ -64,7 +102,6 @@ async def benchmark_endpoint(request: QueryRequest):
         if ttft is None:
             ttft = time.time() - start_time
 
-        # Safe parsing for varying library versions
         if isinstance(chunk, dict):
             content = chunk.get('message', {}).get('content', '')
             is_done = chunk.get('done', False)
@@ -88,7 +125,7 @@ async def benchmark_endpoint(request: QueryRequest):
     tokens_per_second = tokens_generated / generation_time if generation_time > 0 else 0
     
     return {
-        "model": "gemma3:1b",
+        "model": request.model,
         "response": full_text.strip(),
         "telemetry": {
             "time_to_first_token_ms": round(ttft * 1000, 2) if ttft else 0,
