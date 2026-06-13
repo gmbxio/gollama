@@ -25,7 +25,7 @@ The framework provides multi-model comparative benchmarking across parameter sca
 
 ### 3. Multi-Model Edge Matrix (Phase 3)
 
-* **Cross-Model Infrastructure Selector:** Built a decoupled, reactive global sidebar in Streamlit allowing rapid switching between four state-of-the-art edge model nodes: `gemma3:1b`, `llama3.2:1b`, `deepseek-r1:1.5b`, and `qwen2.5:1.5b`.
+* **Cross-Model Infrastructure Selector:** Built a decoupled, reactive global sidebar in Streamlit allowing rapid switching between four state-of-the-art edge model nodes: `gemma3:1b`, `llama3.2:1b`, `deepseek-r1:1.5b`, and `qwen2.5:1.5b`, that is inisde gollama.pdf.
 
 ---
 
