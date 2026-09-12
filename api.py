@@ -3,6 +3,7 @@ from pydantic import BaseModel, ValidationError
 import ollama
 import time
 import json
+import httpx  # NEW: Added this import for dynamic model fetching
 
 app = FastAPI(title="Gollama Core API Engine", description="Dynamic Multi Model SLM Optimization Engine")
 
@@ -21,6 +22,23 @@ class DeveloperProfile(BaseModel):
     primary_language: str
     years_of_experience: int
     skills: list[str]
+
+
+# --- NEW: Dynamic Model Discovery Endpoint ---
+@app.get("/models")
+async def get_local_models():
+    """Fetches dynamically installed models from the local Ollama instance."""
+    async with httpx.AsyncClient() as client:
+        try:
+            # Calls Ollama's native API to see what is downloaded
+            response = await client.get("http://localhost:11434/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            models = [model["name"] for model in data.get("models", [])]
+            return {"models": models}
+        except Exception as e:
+            # Fallback if Ollama is unreachable
+            return {"models": ["gemma3:1b", "llama3.2:1b", "deepseek-r1:1.5b", "qwen2.5:1.5b"]}
 
 
 # --- Dynamic Structured Extraction Endpoint ---

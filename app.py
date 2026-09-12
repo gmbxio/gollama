@@ -1,6 +1,17 @@
 import streamlit as st
 import requests
 
+# NEW HELPER FUNCTION: Fetches models dynamically from your FastAPI backend
+def fetch_available_models():
+    try:
+        response = requests.get("http://localhost:8000/models")
+        if response.status_code == 200:
+            return response.json().get("models", [])
+    except requests.exceptions.ConnectionError:
+        pass
+    # Fallback default models if the backend is down
+    return ["gemma3:1b", "llama3.2:1b", "deepseek-r1:1.5b", "qwen2.5:1.5b"]
+
 st.set_page_config(page_title="Gollama Dashboard", page_icon="🦙", layout="wide")
 
 st.title("🦙 Gollama: Local SLM Production Dashboard")
@@ -9,10 +20,14 @@ st.markdown("Interact with your offline local AI engine and monitor live inferen
 # SIDEBAR CONTROL ELEMENT: Phase 3 Dropdown Architecture Selection
 with st.sidebar:
     st.header("⚙️ Global Engine Model Configuration")
+    
+    # NEW: Fetch the models dynamically
+    available_models = fetch_available_models()
+    
     selected_model = st.selectbox(
         "Choose Local Target Model Architecture:",
-        options=["gemma3:1b", "llama3.2:1b", "deepseek-r1:1.5b", "qwen2.5:1.5b"],
-        help="Select which localized model weights to deploy and query."
+        options=available_models,
+        help="Select which localized model weights to deploy and query. Models are dynamically fetched from your machine."
     )
     st.info(f"Active Model Context Pipeline: **{selected_model}**")
 
